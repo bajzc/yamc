@@ -19,6 +19,8 @@ pub enum Token {
     Neq,    // '!='
     SQuote, // '\''
     Comma,  // ','
+    SColon, // ';'
+    Colon,  // ':'
 }
 
 // check the first token and return the rest tokens if matched
@@ -59,6 +61,8 @@ pub fn lexer(input: String) -> Result<Vec<Token>, String> {
             '}' => tokens.push(Token::RBrace),
             '.' => tokens.push(Token::Dot),
             ',' => tokens.push(Token::Comma),
+            ';' => tokens.push(Token::SColon),
+            ':' => tokens.push(Token::Colon),
             '=' => {
                 if *iter.peek().unwrap_or(&'\0') == '=' {
                     iter.next();
