@@ -1,3 +1,4 @@
+use crate::error::ScanError;
 use std::iter::{self, from_fn};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -23,24 +24,26 @@ pub enum Token {
     Colon,  // ':'
 }
 
+type R<T> = Result<T, ScanError>;
+
 // check the first token and return the rest tokens if matched
-pub fn check_tok(t: Token, ts: &[Token]) -> Result<&[Token], String> {
+pub fn check_tok(t: Token, ts: &[Token]) -> R<&[Token]> {
     match ts {
         [s, tail @ ..] => {
             if t == *s {
                 Ok(tail)
             } else {
-                Err(format!("ERROR: {:?} expected, but found {:?}", t, s))
+                Err(ScanError::Exception(t, ts.to_vec().into_boxed_slice()))
             }
         }
-        [] => Err(format!("ERROR: {:?} expected, but found nothing", t)),
+        [] => Err(ScanError::Exception(t, Box::new([]))),
     }
 }
 
-pub fn lexer(input: String) -> Result<Vec<Token>, String> {
+pub fn lexer(input: String) -> R<Vec<Token>> {
     let mut tokens: Vec<Token> = Vec::new();
     let mut iter = input.chars().peekable();
-    let mut line_count = 1;
+    let mut line_count: i32 = 1;
 
     while let Some(ch) = iter.next() {
         match ch {
@@ -78,7 +81,7 @@ pub fn lexer(input: String) -> Result<Vec<Token>, String> {
                 }
             }
             '\'' => tokens.push(Token::SQuote),
-            '1'..='9' => {
+            ch if ch.is_ascii_digit() => {
                 // the integer part
                 let i: i64 = iter::once(ch)
                     .chain(from_fn(|| iter.by_ref().next_if(|s| s.is_ascii_digit())))
@@ -110,9 +113,7 @@ pub fn lexer(input: String) -> Result<Vec<Token>, String> {
                 tokens.push(Token::VarName(name));
             }
             _ => {
-                return Err(format!(
-                    "ERROR: unexpected character '{ch}' at line {line_count}"
-                ));
+                return Err(ScanError::UnknownCharacter(ch));
             }
         }
     }

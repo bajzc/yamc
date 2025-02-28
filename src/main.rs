@@ -1,4 +1,7 @@
+mod ast;
 mod cli;
+mod error;
+mod eval;
 mod lexer;
 mod matrix;
 mod parser;

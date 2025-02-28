@@ -1,68 +1,53 @@
+use crate::ast::*;
+use crate::error::ScanError;
 use crate::lexer::{check_tok, Token};
 use crate::matrix::Matrix;
 
-#[derive(Debug)]
-pub enum Block {
-    Stmts(Vec<Stmt>),
-}
-#[derive(Debug)]
-pub enum Stmt {
-    Assign(Expr, Expr),
-    Exp(Box<Expr>),
-}
+type R<T> = Result<T, ScanError>;
 
-#[derive(Debug, Clone, Default)]
-pub enum Expr {
-    #[default]
-    Nothing,
-
-    Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>), // actually not used
-    Mul(Box<Expr>, Box<Expr>),
-    Div(Box<Expr>, Box<Expr>),
-    Const(f64),
-    Var(String),
-    Matrix(Matrix<Expr>),
-}
-
-pub fn parse(tokens: &[Token]) -> Result<Block, String> {
+pub fn parse(tokens: &[Token]) -> R<Block> {
     let (ts, b) = parse_block(tokens)?;
     if ts.is_empty() {
         Ok(b)
     } else {
-        Err(format!("ERROR: Unparsed input: {:?}", ts))
+        Err(ScanError::UnparsedInput(ts.to_vec().into_boxed_slice()))
     }
 }
 
-fn parse_atom(tokens: &[Token]) -> Result<(&[Token], Expr), String> {
-    let t = tokens
-        .first()
-        .ok_or("ERROR: Unexpected end of input".to_string())?;
-    match t {
-        Token::VarName(id) => Ok((&tokens[1..], Expr::Var(id.to_string()))),
-        Token::ConstValue(n) => Ok((&tokens[1..], Expr::Const(*n))),
-        Token::Minus => tokens
-            .get(1)
-            .ok_or_else(|| "ERROR: numeric literal expected, but found nothing".to_string())
-            .and_then(|t| match t {
-                Token::ConstValue(n) => Ok((&tokens[2..], Expr::Const((*n) * -1.0))),
-                _ => Err(format!(
-                    "ERROR: numeric literal expected, but found {:?}",
-                    t
-                )),
-            }),
-        Token::LParen => {
-            let (ts1, e) = parse_expr(&tokens[1..])?;
+fn parse_suffix(tokens: &[Token], expr: Expr) -> R<(&[Token], Expr)> {
+    match tokens {
+        [Token::SQuote, rest @ ..] => parse_suffix(rest, Expr::Transpose(Box::new(expr))),
+        _ => Ok((tokens, expr)),
+    }
+}
+
+fn parse_atom(tokens: &[Token]) -> R<(&[Token], Expr)> {
+    let (ts, e) = match tokens {
+        [Token::VarName(id), rest @ ..] => Ok((rest, Expr::Var(id.clone()))),
+        [Token::ConstValue(n), rest @ ..] => Ok((rest, Expr::Const(*n))),
+        [Token::Minus, Token::ConstValue(n), rest @ ..] => Ok((rest, Expr::Const(*n * -1.0))),
+        [Token::Minus, _] => Err(ScanError::UnknownException(
+            tokens.to_vec().into_boxed_slice(),
+        )),
+        [Token::LParen, rest @ ..] => {
+            let (ts1, e) = parse_expr(rest)?;
             let ts2 = check_tok(Token::RParen, ts1)?;
             Ok((ts2, e))
         }
-        _ => Err(format!("ERROR: No expresion found {:?}", tokens)),
-    }
+        [Token::LBrack, rest @ ..] => {
+            let (ts1, x) = parse_matrix(rest)?;
+            let ts2 = check_tok(Token::RBrack, ts1)?;
+            Ok((ts2, x))
+        }
+        [] => Err(ScanError::EndBeforeExpected),
+        _ => Err(ScanError::CannotParseOn(tokens.to_vec().into_boxed_slice())),
+    }?;
+    parse_suffix(ts, e)
 }
 
-fn parse_term(tokens: &[Token]) -> Result<(&[Token], Expr), String> {
+fn parse_term(tokens: &[Token]) -> R<(&[Token], Expr)> {
     let (tokens_rest, e1) = parse_atom(tokens)?;
-    fn go(e: Expr, ts: &[Token]) -> Result<(&[Token], Expr), String> {
+    fn go(e: Expr, ts: &[Token]) -> R<(&[Token], Expr)> {
         match ts {
             [Token::Times, ts @ ..] => {
                 let (ts1, x) = parse_atom(ts)?;
@@ -79,11 +64,11 @@ fn parse_term(tokens: &[Token]) -> Result<(&[Token], Expr), String> {
 }
 
 // exp | array ' ' exp | array ',' exp
-fn parse_array(tokens: &[Token]) -> Result<(&[Token], Vec<Expr>), String> {
+fn parse_array(tokens: &[Token]) -> R<(&[Token], Vec<Expr>)> {
     let mut nums: Vec<Expr> = Vec::new();
     let (tokens_rest, e1) = parse_expr(tokens)?;
     nums.push(e1);
-    fn go<'a>(ts: &'a [Token], nums: &mut Vec<Expr>) -> Result<&'a [Token], String> {
+    fn go<'a>(ts: &'a [Token], nums: &mut Vec<Expr>) -> R<&'a [Token]> {
         match ts {
             [Token::Comma, rest @ ..] => {
                 let (rest_after_expr, expr) = parse_expr(rest)?;
@@ -104,11 +89,16 @@ fn parse_array(tokens: &[Token]) -> Result<(&[Token], Vec<Expr>), String> {
 }
 
 // array | matrix ; array | epsilon
-fn parse_matrix(tokens: &[Token]) -> Result<(&[Token], Expr), String> {
+fn parse_matrix(tokens: &[Token]) -> R<(&[Token], Expr)> {
     let mut rows: Vec<Vec<Expr>> = Vec::new();
+    if let Some(Token::RBrack) = tokens.first() {
+        // empty matrix
+        let m = Matrix::new(0, 0, Expr::Const(0.0));
+        return Ok((tokens, Expr::Matrix(m)));
+    }
     let (tokens_rest, row) = parse_array(tokens)?;
     rows.push(row);
-    fn go<'a>(ts: &'a [Token], rows: &mut Vec<Vec<Expr>>) -> Result<&'a [Token], String> {
+    fn go<'a>(ts: &'a [Token], rows: &mut Vec<Vec<Expr>>) -> R<&'a [Token]> {
         match ts {
             [Token::RBrack, ..] => Ok(ts),
             [Token::SColon, rest @ ..] => {
@@ -117,55 +107,37 @@ fn parse_matrix(tokens: &[Token]) -> Result<(&[Token], Expr), String> {
                 go(ts, rows)
             }
             [] => Ok(ts),
-            _ => Err(format!(
-                "ERROR: array seperator ';' expected, but found {:?}",
-                ts
-            )),
+            _ => Err(ScanError::ArraySeperatorNotFound),
         }
     }
     let ts = go(tokens_rest, &mut rows)?;
-    let m = Matrix::from_vec(rows)?;
+    let m = Matrix::from_vec(rows).map_err(ScanError::Matrix)?;
     Ok((ts, Expr::Matrix(m)))
 }
 
-fn parse_expr(tokens: &[Token]) -> Result<(&[Token], Expr), String> {
-    match tokens {
-        [Token::LBrack, rest @ ..] => {
-            let (ts1, x) = parse_matrix(rest)?;
-            let ts2 = check_tok(Token::RBrack, ts1)?;
-            Ok((ts2, x))
-        }
-        _ => {
-            let (tokens_rest, e1) = parse_term(tokens)?;
-            fn go(e: Expr, ts: &[Token]) -> Result<(&[Token], Expr), String> {
-                match ts {
-                    [Token::Plus, rest @ ..] => {
-                        let (ts1, x) = parse_term(rest)?;
-                        go(Expr::Add(Box::new(e), Box::new(x)), ts1)
-                    }
-                    [Token::Minus, rest @ ..] => {
-                        let (ts1, x) = parse_term(rest)?;
-                        go(Expr::Sub(Box::new(e), Box::new(x)), ts1)
-                    }
-                    [Token::LBrack, rest @ ..] => {
-                        dbg!("called");
-                        let (ts1, x) = parse_matrix(rest)?;
-                        let ts2 = check_tok(Token::RBrack, ts1)?;
-                        Ok((ts2, x))
-                    }
-                    _ => Ok((ts, e)),
-                }
+fn parse_expr(tokens: &[Token]) -> R<(&[Token], Expr)> {
+    fn go(e: Expr, ts: &[Token]) -> R<(&[Token], Expr)> {
+        match ts {
+            [Token::Plus, rest @ ..] => {
+                let (ts1, x) = parse_term(rest)?;
+                go(Expr::Add(Box::new(e), Box::new(x)), ts1)
             }
-            go(e1, tokens_rest)
+            [Token::Minus, rest @ ..] => {
+                let (ts1, x) = parse_term(rest)?;
+                go(Expr::Sub(Box::new(e), Box::new(x)), ts1)
+            }
+            _ => Ok((ts, e)),
         }
     }
+    let (tokens_rest, e1) = parse_term(tokens)?;
+    go(e1, tokens_rest)
 }
 
-fn parse_stmt(tokens: &[Token]) -> Result<(&[Token], Stmt), String> {
+fn parse_stmt(tokens: &[Token]) -> R<(&[Token], Stmt)> {
     match tokens {
         [Token::VarName(id), Token::Assign, ts @ ..] => {
             let (ts1, e2) = parse_expr(ts)?;
-            Ok((ts1, Stmt::Assign(Expr::Var(id.to_string()), e2)))
+            Ok((ts1, Stmt::Assign(Expr::Var(id.clone()), e2)))
         }
         _ => {
             let (ts1, e) = parse_expr(tokens)?;
@@ -174,7 +146,7 @@ fn parse_stmt(tokens: &[Token]) -> Result<(&[Token], Stmt), String> {
     }
 }
 
-fn parse_block(tokens: &[Token]) -> Result<(&[Token], Block), String> {
+fn parse_block(tokens: &[Token]) -> R<(&[Token], Block)> {
     let mut stmts: Vec<Stmt> = Vec::new();
     let (mut ts, mut e) = parse_stmt(tokens)?;
     stmts.push(e);
