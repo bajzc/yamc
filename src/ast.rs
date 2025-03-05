@@ -12,11 +12,12 @@ pub enum Stmt {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>), // actually not used
+    Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
     Const(f64),
     Var(String),
     Matrix(Matrix<Expr>),
     Transpose(Box<Expr>),
+    Rref(Box<Expr>),
 }

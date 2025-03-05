@@ -2,66 +2,80 @@ use crate::ast::*;
 use crate::error::EvalError;
 use crate::matrix::Matrix;
 use crate::symbol::SymbolTable;
-use std::ops::Add;
+use std::ops::{Add, Div, Mul, Sub};
 
 #[derive(Debug, Clone)]
 pub enum Val {
-    Unit,
     Matrix(Matrix<Val>),
     Const(f64),
 }
 
-impl std::ops::Add<Val> for Val {
+type R<T> = Result<T, EvalError>;
+
+impl From<Val> for Matrix<Val> {
+    fn from(value: Val) -> Matrix<Val> {
+        match value {
+            Val::Matrix(matrix) => matrix,
+            Val::Const(_) => Matrix::new(1, 1, value),
+        }
+    }
+}
+
+impl Add<Val> for Val {
     type Output = R<Val>;
 
     fn add(self, rhs: Val) -> Self::Output {
-        match (self, rhs) {
+        match (&self, &rhs) {
             (Val::Const(a), Val::Const(b)) => Ok(Val::Const(a + b)),
-            (Val::Matrix(a), Val::Matrix(b)) => {
-                let sum = a.add(b)?;
-                Ok(Val::Matrix(sum))
-            }
+            _ => Matrix::from(self).add(&Matrix::from(rhs)).map(Val::Matrix),
+        }
+    }
+}
+
+impl Sub<Val> for Val {
+    type Output = R<Val>;
+
+    fn sub(self, rhs: Val) -> Self::Output {
+        match (&self, &rhs) {
+            (Val::Const(a), Val::Const(b)) => Ok(Val::Const(a - b)),
+            _ => Matrix::from(self).sub(&Matrix::from(rhs)).map(Val::Matrix),
+        }
+    }
+}
+
+impl Mul<Val> for Val {
+    type Output = R<Val>;
+
+    fn mul(self, rhs: Val) -> Self::Output {
+        match (&self, &rhs) {
+            (Val::Const(a), Val::Const(b)) => Ok(Val::Const(a * b)),
+            _ => Matrix::from(self).mul(&Matrix::from(rhs)).map(Val::Matrix),
+        }
+    }
+}
+
+impl Div<Val> for Val {
+    type Output = R<Val>;
+
+    fn div(self, rhs: Val) -> Self::Output {
+        match (&self, &rhs) {
+            (Val::Const(a), Val::Const(b)) => Ok(Val::Const(a / b)),
+            _ => Matrix::from(self).div(&Matrix::from(rhs)).map(Val::Matrix),
+        }
+    }
+}
+
+impl Val {
+    pub fn abs(&self) -> R<f64> {
+        match &self {
+            Val::Const(n) => Ok(n.abs()),
             _ => Err(EvalError::TypeMisMatch),
         }
     }
 }
 
-type R<T> = Result<T, EvalError>;
-
-impl Val {
-    pub fn add(&self, e: Val) -> R<Val> {
-        match (self, e) {
-            (Val::Matrix(m1), Val::Matrix(m2)) => m1.clone().add(m2).map(Val::Matrix),
-            (Val::Const(n1), Val::Const(n2)) => Ok(Val::Const(n1 + n2)),
-            _ => todo!(),
-        }
-    }
-
-    pub fn sub(&self, e: Val) -> R<Val> {
-        match (self, e) {
-            (Val::Matrix(m1), Val::Matrix(m2)) => todo!(),
-            (Val::Const(n1), Val::Const(n2)) => Ok(Val::Const(n1 - n2)),
-            _ => todo!(),
-        }
-    }
-    pub fn mul(&self, e: Val) -> R<Val> {
-        match (self, e) {
-            (Val::Matrix(m1), Val::Matrix(m2)) => todo!(),
-            (Val::Const(n1), Val::Const(n2)) => Ok(Val::Const(n1 * n2)),
-            _ => todo!(),
-        }
-    }
-    pub fn div(&self, e: Val) -> R<Val> {
-        match (self, e) {
-            (Val::Matrix(m1), Val::Matrix(m2)) => todo!(),
-            (Val::Const(n1), Val::Const(n2)) => Ok(Val::Const(n1 / n2)),
-            _ => todo!(),
-        }
-    }
-}
-
 impl Expr {
-    fn eval(&self, t: &mut SymbolTable) -> R<Val> {
+    fn eval(&self, t: &SymbolTable) -> R<Val> {
         match self {
             Expr::Add(e1, e2) => {
                 let a1 = e1.eval(t)?;
@@ -98,15 +112,28 @@ impl Expr {
                     .transpose()
                     .map(Val::Matrix)
                     .map_err(EvalError::Matrix),
-                _ => todo!(),
+                ref m => {
+                    if let Val::Matrix(m) = m.eval(t)? {
+                        m.transpose().map(Val::Matrix).map_err(EvalError::Matrix)
+                    } else {
+                        Err(EvalError::TypeMisMatch)
+                    }
+                }
             },
+            Expr::Rref(expr) => {
+                let e = expr.eval(t)?;
+                match e {
+                    Val::Matrix(matrix) => Ok(matrix.rref().map(Val::Matrix)?),
+                    Val::Const(_) => Err(EvalError::TypeMisMatch),
+                }
+            }
         }
     }
 }
 
 impl Block {
     pub fn eval(&self, t: &mut SymbolTable) -> R<Val> {
-        match self {
+        match &self {
             // TODO
             Block::Stmts(stmts) => stmts[0].eval(t),
         }
@@ -123,7 +150,7 @@ impl Stmt {
                 t.insert(id.clone(), e.clone());
                 Ok(e)
             }
-            Stmt::Assign(_, _) => Err(EvalError::AssignToNoneLValue),
+            Stmt::Assign(_, _) => Err(EvalError::AssignToRValue),
         }
     }
 }

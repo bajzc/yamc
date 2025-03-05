@@ -23,6 +23,14 @@ fn parse_suffix(tokens: &[Token], expr: Expr) -> R<(&[Token], Expr)> {
 
 fn parse_atom(tokens: &[Token]) -> R<(&[Token], Expr)> {
     let (ts, e) = match tokens {
+        [Token::VarName(fun_id), Token::LParen, rest @ ..] => {
+            let (ts, e) = parse_expr(rest)?;
+            let ts1 = check_tok(Token::RParen, ts)?;
+            match fun_id.as_str() {
+                "rref" => Ok((ts1, Expr::Rref(Box::new(e)))),
+                _ => Err(ScanError::FunctionNotDefined(fun_id.clone())),
+            }
+        }
         [Token::VarName(id), rest @ ..] => Ok((rest, Expr::Var(id.clone()))),
         [Token::ConstValue(n), rest @ ..] => Ok((rest, Expr::Const(*n))),
         [Token::Minus, Token::ConstValue(n), rest @ ..] => Ok((rest, Expr::Const(*n * -1.0))),

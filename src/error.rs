@@ -16,6 +16,7 @@ pub enum ScanError {
     Exception(Token, Box<[Token]>),
     UnknownCharacter(char),
     ArraySeperatorNotFound,
+    FunctionNotDefined(String),
 }
 
 #[derive(Debug)]
@@ -23,5 +24,12 @@ pub enum EvalError {
     Matrix(MatrixError),
     TypeMisMatch,
     VariableNotFound(String),
-    AssignToNoneLValue,
+    AssignToRValue,
+    EmptyBlock,
+}
+
+impl From<MatrixError> for EvalError {
+    fn from(value: MatrixError) -> Self {
+        EvalError::Matrix(value)
+    }
 }
