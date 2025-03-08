@@ -134,8 +134,11 @@ impl Expr {
 impl Block {
     pub fn eval(&self, t: &mut SymbolTable) -> R<Val> {
         match &self {
-            // TODO
-            Block::Stmts(stmts) => stmts[0].eval(t),
+            Block::Stmts(stmts) => stmts
+                .iter()
+                .map(|s| s.eval(t))
+                .last()
+                .ok_or(EvalError::EmptyBlock)?,
         }
     }
 }
@@ -143,7 +146,6 @@ impl Block {
 impl Stmt {
     pub fn eval(&self, t: &mut SymbolTable) -> R<Val> {
         match self {
-            // TODO
             Stmt::Exp(e) => e.eval(t),
             Stmt::Assign(Expr::Var(id), r) => {
                 let e = r.eval(t)?;

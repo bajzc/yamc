@@ -250,7 +250,6 @@ impl Matrix<Val> {
         // https://en.wikipedia.org/wiki/Gaussian_elimination#Pseudocode
         let matrix = self.flat()?;
         let mut data = matrix.data;
-        dbg!(&data);
         let mut h = 0; // pivot row
         let mut k = 0; // pivot column
         while h < matrix.rows && k < matrix.cols {
@@ -265,13 +264,11 @@ impl Matrix<Val> {
                 k += 1;
             } else {
                 // swap rows(h, i_max)
-                dbg!(&data, h, i_max, matrix.cols); // before swap
                 for i in 0..matrix.cols {
                     let tmp = data[matrix.cols * h + i].clone();
                     data[matrix.cols * h + i] = data[matrix.cols * i_max + i].clone();
                     data[matrix.cols * i_max + i] = tmp;
                 }
-                dbg!(&data); // after swap
 
                 for i in h + 1..matrix.rows {
                     let f = data[i * matrix.cols + k]
