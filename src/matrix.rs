@@ -100,14 +100,14 @@ impl<T: Clone> Matrix<T> {
                 if j1 == j2 {
                     Ok(self.clone())
                 } else {
-                    Err(MatrixError::DiemesionIncorrect((i, j1), (1, j2)))
+                    Err(MatrixError::DimensionIncorrect((i, j1), (1, j2)))
                 }
             }
             ((i1, j), (i2, 1)) => {
                 if i1 == i2 {
                     Ok(self.clone())
                 } else {
-                    Err(MatrixError::DiemesionIncorrect((i1, j), (i2, 1)))
+                    Err(MatrixError::DimensionIncorrect((i1, j), (i2, 1)))
                 }
             }
             ((1, 1), (i, j)) => Ok(Self {
@@ -117,7 +117,7 @@ impl<T: Clone> Matrix<T> {
             }),
             ((1, j1), (i, j2)) => {
                 if j1 != j2 {
-                    Err(MatrixError::DiemesionIncorrect((1, j1), (i, j2)))
+                    Err(MatrixError::DimensionIncorrect((1, j1), (i, j2)))
                 } else {
                     Ok(Self {
                         rows: i,
@@ -128,7 +128,7 @@ impl<T: Clone> Matrix<T> {
             }
             ((i1, 1), (i2, j)) => {
                 if i1 != i2 {
-                    Err(MatrixError::DiemesionIncorrect((i1, 1), (i2, j)))
+                    Err(MatrixError::DimensionIncorrect((i1, 1), (i2, j)))
                 } else {
                     let mut new_data = Vec::with_capacity(i1 * j);
                     for row in &self.data {
@@ -141,7 +141,7 @@ impl<T: Clone> Matrix<T> {
                     })
                 }
             }
-            _ => Err(MatrixError::DiemesionIncorrect(
+            _ => Err(MatrixError::DimensionIncorrect(
                 (self.rows, self.cols),
                 (b.rows, b.cols),
             )),
@@ -341,7 +341,7 @@ impl<T: Clone + Add<Output = Result<T, EvalError>> + Mul<Output = Result<T, Eval
 
     fn mul(self, rhs: &Matrix<T>) -> Self::Output {
         if self.cols != rhs.rows {
-            return Err(EvalError::Matrix(MatrixError::DiemesionIncorrect(
+            return Err(EvalError::Matrix(MatrixError::DimensionIncorrect(
                 (self.rows, self.cols),
                 (rhs.rows, rhs.cols),
             )));
