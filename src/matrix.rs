@@ -1,6 +1,7 @@
 use crate::error::EvalError;
 use crate::error::MatrixError;
 use crate::eval::Val;
+use std::cmp::min;
 use std::ops::{Add, Div, Index, Mul, Sub};
 
 type R<T> = Result<T, MatrixError>;
@@ -286,7 +287,38 @@ impl Matrix<Val> {
             }
         }
         // reduced ref
-        // TODO
+        let square_bound = min(matrix.cols, matrix.rows);
+        for i in 0..square_bound {
+            for j in i + 1..square_bound {
+                if let Val::Const(0.0) = data[i * matrix.cols + j] {
+                    continue;
+                } else {
+                    // R[i] <- R[i] - (R[i][j]/R[j][j]) * R[j]
+                    if let Val::Const(0.0) = data[j * matrix.cols + j] {
+                        continue;
+                    }
+                    let f = data[i * matrix.cols + j]
+                        .clone()
+                        .div(data[j * matrix.cols + j].clone())?;
+                    for k in i + 1..square_bound {
+                        data[i * matrix.cols + k] = data[i * matrix.cols + k]
+                            .clone()
+                            .sub(f.clone().mul(data[j * matrix.cols + k].clone())?)?;
+                    }
+                }
+            }
+        }
+
+        for i in 0..square_bound{
+            let f = data[i*matrix.cols + i].clone();
+            if let Val::Const(0.0) = f{
+                continue;
+            }
+            data[i*matrix.cols + i] = Val::Const(1.0);
+            for j in i+1..matrix.cols{
+                data[i * matrix.cols + j] = data[i*matrix.cols + j].clone().div(f.clone())?;
+            }
+        }
 
         Ok(Matrix {
             rows: self.rows,
