@@ -3,7 +3,7 @@ use crate::lexer::Token;
 pub enum MatrixError {
     ConstructionFromEmptyVector,
     DimensionNotConsistent,
-    DiemesionIncorrect((usize, usize), (usize, usize)),
+    DimensionIncorrect((usize, usize), (usize, usize)),
 }
 
 #[derive(Debug)]
